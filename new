@@ -1,0 +1,122 @@
+# Part 1: Visualizing the ECG Signal
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.fftpack import fft, ifft
+from scipy.signal import find_peaks
+
+# Generate ECG data
+def generate_ecg_data(duration, sampling_rate=250):
+    def generate_ecg_pulse(duration, sampling_rate):
+        t = np.linspace(0, duration, int(duration * sampling_rate), endpoint=False)
+        # P wave
+        p_wave = 0.15 * np.sin(2 * np.pi * 1.5 * t) * np.exp(-((t - 0.1) ** 2) / 0.005)
+        # QRS complex
+        qrs_complex = np.zeros_like(t)
+        qrs_complex[(t > 0.2) & (t < 0.25)] = -0.3
+        qrs_complex[(t > 0.25) & (t < 0.3)] = 1.0
+        qrs_complex[(t > 0.3) & (t < 0.35)] = -0.2
+        # T wave
+        t_wave = 0.3 * np.sin(2 * np.pi * 0.75 * (t - 0.45)) * np.exp(-((t - 0.45) ** 2) / 0.015)
+        # Combine all components
+        pulse = p_wave + qrs_complex + t_wave
+        # Add high-frequency noise to the pulse
+        high_freq_noise = 0.05 * np.sin(2 * np.pi * 50 * t)
+        pulse += high_freq_noise
+        return pulse
+
+    # Generate a single ECG pulse
+    single_pulse = generate_ecg_pulse(0.8, sampling_rate)
+
+    # Repeat the pulse to create a longer ECG signal
+    num_pulses = int(duration / 0.8)
+    ecg_data = np.tile(single_pulse, num_pulses)
+
+    # Add more noise to make it more realistic
+    noise = np.random.normal(0, 0.05, len(ecg_data))  # Increased noise amplitude
+    ecg_data += noise
+
+    # Add baseline wander
+    t = np.linspace(0, duration, len(ecg_data), endpoint=False)
+    baseline_wander = 0.1 * np.sin(2 * np.pi * 0.1 * t)
+    ecg_data += baseline_wander
+
+    # Add power line interference
+    power_line_interference = 0.05 * np.sin(2 * np.pi * 60 * t)  # 60 Hz interference
+    ecg_data += power_line_interference
+
+    # Ensure the length of ecg_data matches the desired duration
+    ecg_data = ecg_data[:int(duration * sampling_rate)]
+
+    return ecg_data
+
+sampling_rate = 250
+duration = 10  # seconds
+ecg_data = generate_ecg_data(duration, sampling_rate)
+
+# Time array
+time = np.arange(len(ecg_data)) / sampling_rate
+
+# Plot raw ECG signal
+plt.figure(figsize=(10, 4))
+plt.plot(time, ecg_data, label="Raw ECG Signal")
+plt.title("Raw ECG Signal")
+plt.xlabel("Time (s)")
+plt.ylabel("ECG Amplitude")
+plt.grid(True)
+plt.legend()
+plt.show()
+
+# Part 2: Fourier Transform
+# Compute Fourier Transform
+ecg_fft = fft(ecg_data)
+frequencies = np.fft.fftfreq(len(ecg_fft), d=1/sampling_rate)
+
+# Plot magnitude of FFT (positive frequencies only)
+plt.figure(figsize=(10, 4))
+plt.plot(frequencies[:len(frequencies)//2], np.abs(ecg_fft[:len(ecg_fft)//2]), label="FFT Magnitude")
+plt.title("Fourier Transform of ECG Signal")
+plt.xlabel("Frequency (Hz)")
+plt.ylabel("Magnitude")
+plt.grid(True)
+plt.legend()
+plt.show()
+
+# Part 3: Filtering the ECG Signal
+# Bandpass filter (0.5 Hz to 40 Hz)
+low_cutoff = 0.5
+high_cutoff = 40
+filter_mask = (frequencies > low_cutoff) & (frequencies < high_cutoff)
+filtered_fft = ecg_fft * filter_mask
+
+# Reconstruct filtered signal using inverse FFT
+filtered_ecg = np.real(ifft(filtered_fft))
+
+# Plot filtered ECG signal
+plt.figure(figsize=(10, 4))
+plt.plot(time, filtered_ecg, label="Filtered ECG Signal", color="orange")
+plt.title("Filtered ECG Signal")
+plt.xlabel("Time (s)")
+plt.ylabel("ECG Amplitude")
+plt.grid(True)
+plt.legend()
+plt.show()
+
+# Part 4: Heart Rate Calculation
+# Detect R-peaks
+peaks, _ = find_peaks(filtered_ecg, distance=sampling_rate*0.6, height=0.5)  # Adjust height threshold as needed
+
+# Calculate heart rate
+r_peak_intervals = np.diff(peaks) / sampling_rate  # Time intervals between peaks in seconds
+average_interval = np.mean(r_peak_intervals)
+heart_rate = 60 / average_interval  # BPM
+
+# Plot R-peaks on filtered ECG
+plt.figure(figsize=(10, 4))
+plt.plot(time, filtered_ecg, label="Filtered ECG Signal", color="orange")
+plt.plot(peaks / sampling_rate, filtered_ecg[peaks], "rx", label="R-peaks")
+plt.title(f"Filtered ECG Signal with R-peaks (Heart Rate: {heart_rate:.2f} BPM)")
+plt.xlabel("Time (s)")
+plt.ylabel("ECG Amplitude")
+plt.grid(True)
+plt.legend()
+plt.show()
